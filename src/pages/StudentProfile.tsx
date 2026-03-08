@@ -8,23 +8,36 @@ import './StudentProfile.css';
 
 export function StudentProfile() {
   const { id } = useParams();
-  const { students, workouts, evolution, videoReviews, workoutLogs, updateVideoReview, assignWorkout, removeWorkout, addEvolutionEntry } = useData();
+  const { students, workouts, evolution, videoReviews, workoutLogs, updateVideoReview, assignWorkout, removeWorkout, addEvolutionEntry, updateStudent, deleteStudent } = useData();
   const [activeTab, setActiveTab] = useState<'info' | 'workouts' | 'evolution' | 'charts'>('info');
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
   const [isEvolutionModalOpen, setIsEvolutionModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [assignSelectedWorkoutId, setAssignSelectedWorkoutId] = useState('');
+  
+  const student = students.find((s: Student) => s.id === id);
+
   const [evolutionFormData, setEvolutionFormData] = useState({
     weight: '',
     notes: '',
     date: new Date().toISOString().split('T')[0]
   });
-  const [isSubmittingEvolution, setIsSubmittingEvolution] = useState(false);
+  
+  const [editFormData, setEditFormData] = useState({
+    name: student?.name || '',
+    goal: student?.goal || 'Hipertrofia',
+    age: student?.age?.toString() || '',
+    weight: student?.weight?.toString() || '',
+    height: student?.height?.toString() || '',
+    notes: student?.notes || ''
+  });
 
-  const student = students.find((s: Student) => s.id === id);
+  const [isSubmittingEvolution, setIsSubmittingEvolution] = useState(false);
+  const [isSubmittingEdit, setIsSubmittingEdit] = useState(false);
+
   const studentWorkouts = workouts.filter((w: Workout) => w.studentId === id);
   const studentLogs = workoutLogs.filter((l: WorkoutLog) => l.studentId === id).sort((a: WorkoutLog, b: WorkoutLog) => new Date(b.date).getTime() - new Date(a.date).getTime());
   
-  // For the assign modal, show unique names of all workouts in the system
   const allUniqueWorkouts = Array.from(new Map(workouts.map((w: Workout) => [w.name, w])).values());
   const studentEvolution = evolution.filter((e: EvolutionEntry) => e.studentId === id).sort((a: EvolutionEntry, b: EvolutionEntry) => new Date(b.date).getTime() - new Date(a.date).getTime());
   const studentVideos = videoReviews.filter((r: VideoReview) => r.studentId === id).sort((a: VideoReview, b: VideoReview) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -51,6 +64,42 @@ export function StudentProfile() {
     }
   };
 
+  const handleEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!student) return;
+
+    setIsSubmittingEdit(true);
+    try {
+      await updateStudent(student.id, {
+        name: editFormData.name,
+        goal: editFormData.goal,
+        age: Number(editFormData.age),
+        weight: Number(editFormData.weight),
+        height: Number(editFormData.height),
+        notes: editFormData.notes
+      });
+      setIsEditModalOpen(false);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setIsSubmittingEdit(false);
+    }
+  };
+
+  const handleDeleteStudent = async () => {
+    if (!student) return;
+    if (confirm(`Tem certeza que deseja excluir permanentemente o aluno ${student.name}? Todos os treinos e históricos serão perdidos.`)) {
+      try {
+        await deleteStudent(student.id);
+        // Navigation is handled after the delete is confirmed or via side effect if needed, 
+        // but here we just need to go back.
+        window.history.back();
+      } catch (error) {
+        console.error(error);
+      }
+    }
+  };
+
   if (!student) {
     return <div className="p-4"><p>Aluno não encontrado.</p><Link to="/alunos" className="btn btn-secondary mt-4">Voltar</Link></div>;
   }
@@ -69,9 +118,24 @@ export function StudentProfile() {
               <span className="badge tag-goal">{student.goal}</span>
             </div>
           </div>
-          <button className="btn btn-secondary">
-            <Edit2 size={16} /> Editar Perfil
-          </button>
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <button className="btn btn-secondary" onClick={() => {
+              setEditFormData({
+                name: student.name,
+                goal: student.goal,
+                age: student.age.toString(),
+                weight: student.weight.toString(),
+                height: student.height.toString(),
+                notes: student.notes
+              });
+              setIsEditModalOpen(true);
+            }}>
+              <Edit2 size={16} /> Editar Perfil
+            </button>
+            <button className="btn btn-secondary text-danger" onClick={handleDeleteStudent}>
+              <Trash2 size={16} />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -413,6 +477,102 @@ export function StudentProfile() {
                 <button type="button" className="btn btn-secondary" onClick={() => setIsEvolutionModalOpen(false)} disabled={isSubmittingEvolution}>Cancelar</button>
                 <button type="submit" className="btn btn-primary" disabled={isSubmittingEvolution}>
                   {isSubmittingEvolution ? 'Salvando...' : 'Salvar Evolução'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      {/* Edit Student Modal */}
+      {isEditModalOpen && (
+        <div className="modal-overlay">
+          <div className="modal-content card" style={{ maxWidth: '500px' }}>
+            <div className="modal-header">
+              <h2>Editar Perfil: {student.name}</h2>
+              <button className="close-btn" onClick={() => setIsEditModalOpen(false)}>&times;</button>
+            </div>
+            
+            <form onSubmit={handleEditSubmit} className="modal-form">
+              <div className="form-row">
+                <div className="input-group">
+                  <label className="input-label">Nome Completo</label>
+                  <input 
+                    required 
+                    type="text" 
+                    className="input-field" 
+                    value={editFormData.name} 
+                    onChange={(e) => setEditFormData({...editFormData, name: e.target.value})} 
+                  />
+                </div>
+              </div>
+
+              <div className="form-row columns-2 mt-4">
+                <div className="input-group">
+                  <label className="input-label">Objetivo Principal</label>
+                  <select 
+                    className="input-field" 
+                    value={editFormData.goal}
+                    onChange={(e) => setEditFormData({...editFormData, goal: e.target.value})}
+                  >
+                    <option value="Hipertrofia">Hipertrofia</option>
+                    <option value="Emagrecimento">Emagrecimento</option>
+                    <option value="Performance">Performance</option>
+                    <option value="Saúde">Saúde/Qualidade de Vida</option>
+                  </select>
+                </div>
+                <div className="input-group">
+                  <label className="input-label">Idade</label>
+                  <input 
+                    required 
+                    type="number" 
+                    className="input-field" 
+                    value={editFormData.age} 
+                    onChange={(e) => setEditFormData({...editFormData, age: e.target.value})} 
+                  />
+                </div>
+              </div>
+
+              <div className="form-row columns-2 mt-4">
+                <div className="input-group">
+                  <label className="input-label">Peso (kg)</label>
+                  <input 
+                    required 
+                    type="number" 
+                    step="0.1"
+                    className="input-field" 
+                    value={editFormData.weight} 
+                    onChange={(e) => setEditFormData({...editFormData, weight: e.target.value})} 
+                  />
+                </div>
+                <div className="input-group">
+                  <label className="input-label">Altura (m)</label>
+                  <input 
+                    required 
+                    type="number" 
+                    step="0.01"
+                    className="input-field" 
+                    value={editFormData.height} 
+                    onChange={(e) => setEditFormData({...editFormData, height: e.target.value})} 
+                  />
+                </div>
+              </div>
+
+              <div className="form-row mt-4">
+                <div className="input-group">
+                  <label className="input-label">Observações e Restrições</label>
+                  <textarea 
+                    className="input-field" 
+                    rows={4} 
+                    value={editFormData.notes} 
+                    onChange={(e) => setEditFormData({...editFormData, notes: e.target.value})}
+                  ></textarea>
+                </div>
+              </div>
+
+              <div className="modal-footer">
+                <button type="button" className="btn btn-secondary" onClick={() => setIsEditModalOpen(false)} disabled={isSubmittingEdit}>Cancelar</button>
+                <button type="submit" className="btn btn-primary" disabled={isSubmittingEdit}>
+                  {isSubmittingEdit ? 'Salvando...' : 'Salvar Alterações'}
                 </button>
               </div>
             </form>

@@ -170,6 +170,9 @@ interface DataContextType {
   addVideoReview: (r: Omit<VideoReview, 'id' | 'status' | 'date' | 'trainerId'>) => Promise<void>;
   updateVideoReview: (id: string, feedback: string) => Promise<void>;
   logWorkout: (log: Omit<WorkoutLog, 'id' | 'trainerId'>) => Promise<void>;
+  addExercise: (ex: Omit<Exercise, 'id' | 'trainerId'>) => Promise<void>;
+  deleteExercise: (id: string) => Promise<void>;
+  deleteStudent: (id: string) => Promise<void>;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -367,6 +370,14 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     const { error } = await supabase.from('students').update(dbUpdates).eq('id', id);
     if (error) throw error;
     setStudents(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s));
+    showNotification('Perfil do aluno atualizado.');
+  };
+
+  const deleteStudent = async (id: string) => {
+    const { error } = await supabase.from('students').delete().eq('id', id);
+    if (error) throw error;
+    setStudents(prev => prev.filter(s => s.id !== id));
+    showNotification('Aluno removido com sucesso.');
   };
   
   const addWorkout = async (w: Omit<Workout, 'id' | 'trainerId'>) => {
@@ -462,11 +473,38 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     showNotification('Treino finalizado! Parabéns! 🎉');
   };
 
+  const addExercise = async (ex: Omit<Exercise, 'id' | 'trainerId'>) => {
+    if (!user) return;
+    const { data, error } = await supabase.from('exercises').insert([
+      { name: ex.name, muscle_group: ex.muscleGroup, description: ex.description, execution_instructions: ex.executionInstructions, trainer_id: user.id }
+    ]).select();
+    if (error) throw error;
+    if (data) {
+      const resp = data[0];
+      setExercises(prev => [...prev, { 
+        id: resp.id, 
+        trainerId: resp.trainer_id, 
+        name: resp.name, 
+        muscleGroup: resp.muscle_group, 
+        description: resp.description, 
+        executionInstructions: resp.execution_instructions 
+      }]);
+    }
+    showNotification(`Exercício ${ex.name} adicionado à biblioteca.`);
+  };
+
+  const deleteExercise = async (id: string) => {
+    const { error } = await supabase.from('exercises').delete().eq('id', id);
+    if (error) throw error;
+    setExercises(prev => prev.filter(ex => ex.id !== id));
+    showNotification('Exercício removido.');
+  };
+
   return (
     <DataContext.Provider value={{
       students, workouts, exercises, evolution, videoReviews, workoutLogs,
       notification, appNotifications, showNotification, markNotificationAsRead, isLoading,
-      addStudent, updateStudent, addWorkout, assignWorkout, removeWorkout, addEvolutionEntry, addVideoReview, updateVideoReview, logWorkout
+      addStudent, updateStudent, deleteStudent, addWorkout, assignWorkout, removeWorkout, addEvolutionEntry, addVideoReview, updateVideoReview, logWorkout, addExercise, deleteExercise
     }}>
       {children}
     </DataContext.Provider>
